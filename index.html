@@ -238,6 +238,25 @@ html,body { width:100%; height:100%; overflow:hidden; background:var(--bg); font
 ::-webkit-scrollbar-thumb { background:var(--border2); border-radius:2px; }
 ::-webkit-scrollbar-track { background:transparent; }
 
+/* SELECTION POPUP */
+#sel-popup {
+  position:fixed; right:16px; top:50%; transform:translateY(-50%);
+  z-index:300; display:none; flex-direction:column; gap:6px;
+  background:var(--bg2); border:1px solid var(--border2);
+  border-radius:10px; box-shadow:var(--shadow); padding:10px 12px;
+  min-width:140px;
+}
+#sel-popup.visible { display:flex; }
+.sp-title { font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--text3); letter-spacing:.08em; text-transform:uppercase; margin-bottom:2px; }
+.sp-count { font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--accent); margin-bottom:4px; }
+.sp-btn {
+  background:none; border:1px solid var(--border2); border-radius:6px;
+  color:var(--text2); font-family:'Syne',sans-serif; font-size:11px; font-weight:600;
+  padding:5px 8px; cursor:pointer; transition:all .15s; text-align:left; letter-spacing:.02em;
+}
+.sp-btn:hover { color:var(--accent); border-color:var(--accent); background:var(--accent-glow); }
+.sp-btn.red:hover { color:var(--red); border-color:var(--red); background:transparent; }
+
 #file-in { display:none; }
 </style>
 </head>
@@ -307,6 +326,13 @@ html,body { width:100%; height:100%; overflow:hidden; background:var(--bg); font
 </div>
 
 <div id="toast"></div>
+
+<div id="sel-popup">
+  <div class="sp-title">Выделено</div>
+  <div class="sp-count" id="sp-count">0 узлов</div>
+  <button class="sp-btn" onclick="duplicateSelected()">⧉ Дублировать</button>
+  <button class="sp-btn red" onclick="deleteSelected()">✕ Удалить</button>
+</div>
 
 <script>
 // ═══════════════════════════════════════════════
@@ -475,10 +501,35 @@ $canvas.addEventListener('contextmenu', e => e.preventDefault());
 // ═══════════════════════════════════════════════
 // SELECTION HELPERS
 // ═══════════════════════════════════════════════
-function addSel(id)    { selectedIds.add(id);    document.getElementById('node_'+id)?.classList.add('selected'); }
-function remSel(id)    { selectedIds.delete(id); document.getElementById('node_'+id)?.classList.remove('selected'); }
+function addSel(id)    { selectedIds.add(id);    document.getElementById('node_'+id)?.classList.add('selected');    updateSelPopup(); }
+function remSel(id)    { selectedIds.delete(id); document.getElementById('node_'+id)?.classList.remove('selected'); updateSelPopup(); }
 function toggleSel(id) { selectedIds.has(id) ? remSel(id) : addSel(id); }
-function clearSel()    { [...selectedIds].forEach(remSel); selectedIds.clear(); }
+function clearSel()    { [...selectedIds].forEach(id => { selectedIds.delete(id); document.getElementById('node_'+id)?.classList.remove('selected'); }); selectedIds.clear(); updateSelPopup(); }
+
+function updateSelPopup() {
+  const n = selectedIds.size;
+  const popup = document.getElementById('sel-popup');
+  if (n >= 2) {
+    popup.classList.add('visible');
+    const noun = n >= 5 ? 'узлов' : n >= 2 ? 'узла' : 'узел';
+    document.getElementById('sp-count').textContent = `${n} ${noun}`;
+  } else {
+    popup.classList.remove('visible');
+  }
+}
+
+function deleteSelected() {
+  const toDelete = [...selectedIds].filter(id => id !== rootId);
+  if (!toDelete.length) { toast('Нельзя удалить целевой предмет'); return; }
+  toDelete.forEach(id => {
+    items = items.filter(x => x.id !== id);
+    items.forEach(it => { it.ingredients = it.ingredients.filter(i => i.id !== id); });
+  });
+  selectedIds.clear();
+  updateSelPopup();
+  renderAll();
+  toast(`Удалено: ${toDelete.length} узл${toDelete.length===1?'':'а'}`);
+}
 
 // ═══════════════════════════════════════════════
 // UTILS
@@ -725,6 +776,13 @@ function deleteItem(id) {
 }
 
 function setRoot(id) { rootId = id; renderAll(); }
+
+function removeIng(itemId, idx) {
+  const item = getItem(itemId);
+  if (!item) return;
+  item.ingredients.splice(idx, 1);
+  renderAll();
+}
 
 // addIng: picks the newest item not yet used as ingredient, or creates a new one
 function addIng(itemId) {
